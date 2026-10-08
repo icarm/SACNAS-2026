@@ -168,6 +168,8 @@ def panel():
     run_button = W.Button(description="Run", button_style="success", icon="play",
                           layout=W.Layout(width="140px"))
     out = W.Output()
+    # The training plot lives in a picture widget whose image is swapped in place, so it never flashes.
+    picture = W.Image(format="png", layout=W.Layout(display="none", max_width="100%", height="auto"))
 
     def choose(letter):
         def handler(_):
@@ -192,14 +194,18 @@ def panel():
 
     def on_run(_):
         run_button.disabled, run_button.description = True, "Training..."
+        picture.layout.display = "block"
+        mlmath._live["image"] = picture
         try:
             with out:
                 clear_output(wait=True)  # clear only when new output arrives
+                print("Training...")
                 try:
                     run(**{key: widget.value for key, widget in controls.items()})
                 except Exception as error:  # show the problem instead of failing silently
                     print("Something went wrong:", repr(error))
         finally:
+            mlmath._live["image"] = None
             run_button.disabled, run_button.description = False, "Run"
     run_button.on_click(on_run)
 
@@ -244,6 +250,7 @@ def panel():
         settings_grid,
         W.HTML("<h3 style='margin:8px 0 0 0'>3. Predict, then run</h3>"),
         run_button,
+        picture,
         out,
         W.HTML("<h3 style='margin:8px 0 0 0'>4. Probe the network you just trained</h3>"),
         W.HBox([number, ask_button]),

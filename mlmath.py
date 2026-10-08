@@ -5,9 +5,12 @@ plotting, and the probes used to look inside a trained network. The training
 loop is written out in notebooks/01_train.ipynb, and the same loop is repeated
 here as train() so the explore notebook and tools/ can reuse it.
 """
+import base64
 import copy
+import io
 import math
 import os
+import time
 from types import SimpleNamespace
 
 import numpy as np
@@ -138,8 +141,8 @@ def train(encode, data, width=512, optimizer="sgd", lr=0.1, epochs=400, batch_si
             history.append(evaluate(model, X, y, data, epoch))
             if epoch in save_at:
                 saved[epoch] = copy.deepcopy(model)
-            if live and (epoch % 10 == 0 or epoch == epochs):
-                live_plot(history, data.modulus, title)
+            if live:
+                live_plot(history, data.modulus, title, done=(epoch == epochs))
             if epoch == epochs:
                 break
             order = data.train[torch.randperm(len(data.train))]
@@ -151,7 +154,7 @@ def train(encode, data, width=512, optimizer="sgd", lr=0.1, epochs=400, batch_si
                 opt.step()
     except KeyboardInterrupt:  # the stop button: keep what we have so far
         if live:
-            live_plot(history, data.modulus, title)
+            live_plot(history, data.modulus, title, done=True)
         print(f"Stopped early at epoch {history[-1]['epoch']}.")
     return model, history, saved
 
@@ -230,7 +233,8 @@ def plot_history(history, modulus=6, title=None, marks=()):
     top.set_yticklabels(["0"] + [f"ln {k} = {math.log(k):.2f}" for k in levels])
     top.grid(axis="y", visible=False)
     top.set_ylabel("loss")
-    top.set_ylim(0, math.log(modulus) * 1.12)
+    highest = max(max(row["test_loss"], row["train_loss"]) for row in history)
+    top.set_ylim(0, max(math.log(modulus) * 1.12, highest * 1.05))
     top.legend(loc="center left", bbox_to_anchor=(1.01, 0.5), fontsize=9)
     top.set_title(title or f"Learning n mod {modulus}", loc="left")
 
@@ -257,13 +261,47 @@ def plot_history(history, modulus=6, title=None, marks=()):
     return fig
 
 
-def live_plot(history, modulus=6, title=None):
-    """Redraw the training plot in place. Called from inside the training loop."""
-    from IPython.display import clear_output, display
+LIVE_SECONDS = 1.5  # at most one redraw this often, so the picture never flashes
+LIVE_SIZE = (9.5, 6.4)  # inches; every frame has exactly this size, so nothing on the page jumps
+LIVE_DPI = 90
+_live = {"handle": None, "last": 0.0, "image": None}
+
+
+def _frame(history, modulus, title):
+    """The training plot as PNG bytes, always the same pixel size."""
     fig = plot_history(history, modulus, title)
-    clear_output(wait=True)
-    display(fig)
+    fig.set_size_inches(*LIVE_SIZE)
+    fig.subplots_adjust(left=0.15, right=0.71, top=0.94, bottom=0.09)
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="png", dpi=LIVE_DPI)
     plt.close(fig)
+    return buffer.getvalue()
+
+
+def live_plot(history, modulus=6, title=None, done=False):
+    """Show the training plot and update it in place as training goes on.
+
+    Call it every epoch. It redraws at most once every LIVE_SECONDS seconds,
+    always draws the first and the last frame, and never clears the output,
+    so the picture changes smoothly instead of flashing.
+    """
+    first = len(history) == 1
+    now = time.time()
+    if not (first or done or now - _live["last"] >= LIVE_SECONDS):
+        return
+    _live["last"] = now
+    png = _frame(history, modulus, title)
+    if _live["image"] is not None:  # the explore panel supplies its own picture widget
+        _live["image"].value = png
+        return
+    from IPython.display import HTML, display
+    width, height = int(LIVE_SIZE[0] * LIVE_DPI), int(LIVE_SIZE[1] * LIVE_DPI)
+    picture = HTML(f'<img src="data:image/png;base64,{base64.b64encode(png).decode()}" '
+                   f'width="{width}" height="{height}" style="max-width:100%;height:auto">')
+    if first or _live["handle"] is None:
+        _live["handle"] = display(picture, display_id=True)
+    else:
+        _live["handle"].update(picture)
 
 # ---------------------------------------------------------------- probes
 
