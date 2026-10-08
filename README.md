@@ -8,7 +8,7 @@ We teach a small neural network to compute **n mod 6** from the digits of n. Its
 
 You need a laptop, a web browser, and a Google account. Nothing needs to be installed on your computer.
 
-1. Click the first badge below. It opens the notebook in Google Colab.
+1. Click the first badge below (Cmd-click (Mac) or Ctrl-click (Windows) a badge to open it in a new tab, so this page stays open.). It opens the notebook in Google Colab.
 2. Click into the first cell and press **Shift + Enter**. Keep going down the page.
 3. When the last cell prints **You are ready**.
 
