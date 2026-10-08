@@ -2,44 +2,22 @@
 
 A three-hour, hands-on introduction for mathematicians with no machine learning background. SACNAS Modern Math Workshop, 2026.
 
-We teach a small neural network to compute **n mod 6** from the digits of n. It gets no rules, only examples. Its error falls in two separate steps, and we open the network up to find out what it learned at each one. The answer turns out to be the Chinese Remainder Theorem, one factor at a time.
+We teach a small neural network to compute **n mod 6** from the digits of n. Its "prediction error" falls in two separate places, and we open the network up to find out what it learned at each one. This investigation leads us to rediscovering the Chinese Remainder Theorem (specifically for 6), one factor at a time.
 
-## Get started
+## How to get started
 
-You need a laptop, a web browser, and a Google account. Nothing to install.
+You need a laptop, a web browser, and a Google account. Nothing needs to be installed on your computer.
 
 1. Click the first badge below. It opens the notebook in Google Colab.
 2. Click into the first cell and press **Shift + Enter**. Keep going down the page.
-3. When the last cell prints **You are ready**, you are set.
+3. When the last cell prints **You are ready**.
 
 | Notebook | When | Open |
 | --- | --- | --- |
 | Setup check | First 15 minutes | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/icarm/SACNAS-2026/blob/main/notebooks/00_setup_check.ipynb) |
 | Session 1: train the network | Session 1 | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/icarm/SACNAS-2026/blob/main/notebooks/01_train.ipynb) |
 | Session 2: open the network up | Session 2 | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/icarm/SACNAS-2026/blob/main/notebooks/02_interpret.ipynb) |
-| Explore: break it yourself, with buttons | Break, and the end of session 2 | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/icarm/SACNAS-2026/blob/main/notebooks/03_explore.ipynb) |
-
-## Schedule
-
-| Time | Session 1: build it and watch it learn |
-| --- | --- |
-| 0:00 | Setup |
-| 0:15 | The game by hand: n mod 6 without dividing |
-| 0:30 | The data, and why we hold half of it back |
-| 0:45 | Three ways to show a number to a network. Two of them fail. |
-| 1:05 | Train, and watch the loss fall in two steps |
-| 1:25 | Questions for the break |
-
-30 minute break.
-
-| Time | Session 2: open it up |
-| --- | --- |
-| 0:00 | Load three snapshots of the network |
-| 0:10 | Probe 1: ask it questions |
-| 0:30 | Probe 2: change one digit and see if the answer moves |
-| 0:50 | Probe 3: read the connection strengths |
-| 1:10 | Break it yourself with the explore panel |
-| 1:25 | What we did, and what it does not prove |
+| Explore: break it yourself | Break, and the end of session 2 | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/icarm/SACNAS-2026/blob/main/notebooks/03_explore.ipynb) |
 
 ## If something goes wrong
 
@@ -66,18 +44,6 @@ checkpoints/    the network at epochs 0, 30 and 400, plus its training history
 solutions/      discussion notes with answers and measured results
 tools/          scripts for the instructor
 ```
-
-## For the instructor
-
-Before the workshop:
-
-1. Point the notebooks and this README at the real repo: `python tools/set_repo.py YOUR-NAME/YOUR-REPO`
-2. Run the checks: `python tools/preflight.py` (about 3 minutes; add `--all` to also run every explore experiment). It fails if any notebook has saved outputs, so you cannot publish a spoiled or broken notebook by accident.
-3. After pushing, open each Colab badge from a private browser window and run the first cell.
-
-To regenerate the snapshots: `python tools/make_checkpoints.py`. To clear outputs after editing a notebook: `jupyter nbconvert --clear-output --inplace notebooks/*.ipynb`.
-
-`solutions/discussion_notes.md` has the measured results for every experiment and talking points for each question.
 
 ## License
 
