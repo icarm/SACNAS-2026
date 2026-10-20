@@ -1,4 +1,4 @@
-"""The experiment panel for notebooks/03_explore.ipynb.
+"""Experiments for notebooks/03_explore.ipynb.
 
     lab.panel()          buttons for every experiment
     lab.menu()           list the experiments and the settings you can change
@@ -7,6 +7,7 @@
 
 Every experiment is the session 1 setup with a few settings changed.
 """
+import difflib
 from types import SimpleNamespace
 
 import torch
@@ -82,15 +83,99 @@ last = None  # the most recent experiment: last.model, last.data, last.history, 
 
 
 def settings_for(preset=None, **changes):
-    """The session 1 settings, then the preset's changes, then yours."""
+    """The session 1 settings, then the preset's changes, then yours (as typed, not yet checked)."""
     settings = dict(SESSION_1)
     if preset is not None:
-        settings.update(PRESETS[preset.upper()][1])
+        settings.update(PRESETS[_preset_letter(preset)][1])
     for key, value in changes.items():
-        if key not in settings:
-            raise ValueError(f"Unknown setting {key!r}. The settings are: {', '.join(settings)}")
-        settings[key] = value
+        settings[_setting_name(key)] = value
     return settings
+
+
+# Other names people reach for, and the setting they mean.
+ALIASES = {"mod": "modulus", "m": "modulus", "n_mod": "modulus", "nmod": "modulus",
+           "hidden_units": "width", "units": "width", "hidden": "width", "size": "width",
+           "train": "train_frac", "frac": "train_frac", "fraction": "train_frac", "train_fraction": "train_frac",
+           "epoch": "epochs", "wd": "weight_decay", "decay": "weight_decay",
+           "place": "hide_place", "hide": "hide_place", "digit": "hide_digit", "hidden_digit": "hide_digit",
+           "opt": "optimizer", "optimiser": "optimizer", "encode": "encoding", "encoder": "encoding"}
+# Whole-number settings and the range allowed, so nobody starts an hour-long run by accident.
+WHOLE = dict(modulus=(2, 100), width=(1, 4096), epochs=(1, 2000), hide_digit=(0, 9), seed=(0, 10 ** 9))
+
+
+def _preset_letter(preset):
+    if isinstance(preset, str):
+        letter = "".join(c for c in preset if c.isalpha()).upper()
+        if letter in PRESETS:
+            return letter
+    if isinstance(preset, (int, float)) and not isinstance(preset, bool):
+        raise mlmath.Unreadable(f"Write the name of the setting too: lab.run(modulus={preset:g}), "
+                                f"not lab.run({preset:g}).")
+    raise mlmath.Unreadable(f"There is no experiment {preset!r}. The letters are {', '.join(PRESETS)}. "
+                            "lab.menu() lists them.")
+
+
+def _setting_name(key):
+    name = key.strip().lower().replace(" ", "_").replace("-", "_")
+    name = ALIASES.get(name, name)
+    if name in SESSION_1:
+        return name
+    close = difflib.get_close_matches(name, list(SESSION_1), n=1, cutoff=0.5)
+    raise mlmath.Unreadable(f"There is no setting called {key!r}."
+                            + (f" Did you mean {close[0]}?" if close else "")
+                            + f" The settings are: {', '.join(SESSION_1)}.")
+
+
+def _clean(key, value):
+    """Read one setting the way a person might type it, or explain what went wrong."""
+    if value is Ellipsis:
+        raise mlmath.Unreadable(f"Replace the ... after {key}= with a value and run again.")
+    if key in WHOLE:
+        low, high = WHOLE[key]
+        n = mlmath._as_int(value)
+        if not low <= n <= high:
+            raise mlmath.Unreadable(f"{key} should be a whole number from {low} to {high}, not {n}.")
+        return n
+    if key == "train_frac":
+        x = mlmath._as_number(value, "a fraction")
+        if isinstance(value, str) and "%" in value or 1 < x <= 100:
+            x = x / 100  # typed as a percent: 10 or "10%" means 0.1
+        if not 0.01 <= x <= 0.95:
+            raise mlmath.Unreadable("train_frac is the fraction of numbers to train on, from 0.01 to 0.95. "
+                                    "For example 0.1 means 10%.")
+        return x
+    if key == "weight_decay":
+        x = mlmath._as_number(value)
+        if not 0 <= x <= 10:
+            raise mlmath.Unreadable("weight_decay should be a number from 0 to 10.")
+        return x
+    if key == "optimizer":
+        name = str(mlmath._unwrap(value)).strip().lower()
+        for option in LEARNING_RATE:
+            if name == option.lower():
+                return option
+        raise mlmath.Unreadable('optimizer should be "SGD" or "Adam", in quotation marks.')
+    if key == "encoding":
+        value = mlmath._unwrap(value)
+        if callable(value):  # a function passed directly: register it under its own name
+            ENCODINGS.setdefault(getattr(value, "__name__", "my encoding"), value)
+            return next(name for name, f in ENCODINGS.items() if f is value)
+        squash = lambda text: "".join(c for c in str(text).lower() if c.isalnum())  # "One-hot digits" -> "onehotdigits"
+        name = squash(value)
+        exact = [option for option in ENCODINGS if squash(option) == name]
+        partial = [option for option in ENCODINGS if name and name in squash(option)]
+        if exact or len(partial) == 1:
+            return (exact or partial)[0]
+        close = difflib.get_close_matches(str(value).lower(), list(ENCODINGS), n=1, cutoff=0.5)
+        raise mlmath.Unreadable(f"There is no encoding {value!r}."
+                                + (f' Did you mean "{close[0]}"?' if close else "")
+                                + " The encodings are: " + ", ".join(f'"{e}"' for e in ENCODINGS) + ".")
+    if key == "hide_place":
+        value = mlmath._unwrap(value)
+        if value is None or str(value).strip().lower() in ("nowhere", "none", "no", "", "false"):
+            return "nowhere"
+        return mlmath.position_name(mlmath._position(value))
+    return value
 
 
 def _title(settings):
@@ -102,14 +187,16 @@ def _title(settings):
     return f"Your experiment: n mod {settings['modulus']}"
 
 
+@mlmath._forgiving
 def run(preset=None, live=True, **changes):
-    """Run one experiment. preset is a letter from menu(); changes override single settings."""
+    """Run one experiment. preset is a letter from menu(); changes override single settings.
+
+    Returns the result (result.model, result.data, result.history, result.settings),
+    or None after printing what to fix when a setting cannot be read.
+    """
     global last
     settings = settings_for(preset, **changes)
-    if settings["encoding"] not in ENCODINGS:
-        raise ValueError(f"Unknown encoding. Choose from: {', '.join(ENCODINGS)}")
-    if settings["optimizer"] not in LEARNING_RATE:
-        raise ValueError("optimizer must be 'SGD' or 'Adam'")
+    settings = {key: _clean(key, value) for key, value in settings.items()}
     place = PLACES[settings["hide_place"]]
     data = mlmath.make_data(modulus=settings["modulus"], train_frac=settings["train_frac"],
                             holdout=None if place is None else (place, settings["hide_digit"]))
@@ -117,8 +204,8 @@ def run(preset=None, live=True, **changes):
         ENCODINGS[settings["encoding"]], data, width=settings["width"],
         optimizer=settings["optimizer"].lower(), lr=LEARNING_RATE[settings["optimizer"]],
         weight_decay=settings["weight_decay"], epochs=settings["epochs"], seed=settings["seed"],
-        live=live, title=_title(settings))
-    mlmath.summarize(history)
+        live="plot" if live else False, title=_title(settings), detail=True)
+    mlmath.summarize(history, factors=True)
     if place is not None:
         held, truth = data.numbers[data.held], data.labels[data.held]
         answers = mlmath.predict_all(model, held)

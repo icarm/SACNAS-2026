@@ -5,7 +5,8 @@
 
 It checks the packages, checks that the saved snapshots tell the story the
 notebooks describe, retrains the main network here and checks for the two
-steps, and runs notebooks 00, 01 and 02 top to bottom without saving them.
+steps, and runs notebooks 01 and 02 top to bottom without saving them, with
+every fill-in cell replaced by its answer.
 """
 import math
 import os
@@ -90,7 +91,7 @@ else:
 
 print("\n2. Saved snapshots (used by session 2)")
 data = mlmath.make_data()
-snap = {e: mlmath.load_model(f"checkpoints/mod6_epoch{e:03d}.pt") for e in (0, 30, 400)}
+snap = {e: mlmath.load_model(f"checkpoints/mod6_epoch{e:03d}.pt") for e in (30, 400)}
 X, y = mlmath.encode_onehot(data.numbers), data.labels
 row30 = mlmath.evaluate(snap[30], X, y, data)
 row400 = mlmath.evaluate(snap[400], X, y, data)
@@ -117,7 +118,7 @@ note(f"training took {seconds:.0f} seconds here without the live plot; budget ab
 drift = max(abs(a["test_acc"] - b["test_acc"]) for a, b in zip(fresh, history))
 note(f"largest gap from the saved history at any epoch: {drift:.1%} (0% means this machine matches exactly)")
 
-print("\n4. Run the notebooks top to bottom with this Python (outputs are not saved)")
+print("\n4. Run the notebooks top to bottom with this Python, answers filled in (outputs are not saved)")
 try:
     import ipykernel  # noqa: F401
     import nbformat
@@ -135,8 +136,11 @@ else:
         json.dump({"argv": [sys.executable, "-m", "ipykernel_launcher", "-f", "{connection_file}"],
                    "display_name": "ml4math preflight", "language": "python"}, f)
     os.environ["JUPYTER_PATH"] = kernel_home + os.pathsep + os.environ.get("JUPYTER_PATH", "")
-    for name in ("00_setup_check", "01_train", "02_interpret"):
+    for name in ("01_train", "02_interpret"):
         notebook = nbformat.read(f"notebooks/{name}.ipynb", as_version=4)
+        for cell in notebook.cells:  # a fill-in cell keeps its answer in metadata["solution"]
+            if "solution" in cell.metadata:
+                cell.source = cell.metadata["solution"]
         start = time.time()
         try:
             NotebookClient(notebook, timeout=900, kernel_name="ml4math-preflight",
