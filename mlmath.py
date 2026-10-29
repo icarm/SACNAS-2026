@@ -4,7 +4,7 @@ Everything here is support code: building the dataset, encoding numbers,
 plotting, the checks behind the fill-in cells, and the probes used to look
 inside a trained network. The training loop is written out in
 notebooks/01_train.ipynb, and the same loop is repeated here as train() so the
-explore notebook and tools/ can reuse it.
+lab.py and tools/ can reuse it.
 
 In the notebooks, a ... (three dots) marks a blank for students to fill in.
 Every function a student calls reads what they typed loosely (2, 2.0, "2" and a
@@ -138,6 +138,11 @@ def _flatten(values):
 
 def _as_models(models):
     """A dict {name: network}, or a single network, which gets the name 'this network'."""
+    if models is None:
+        raise Unreadable("There's no network here yet: the cell that trains it didn't finish. "
+                         "Read the message it printed, fix it, run it again, then run this cell.")
+    if isinstance(getattr(models, "model", None), nn.Module):  # the result of lab.run(...)
+        models = models.model
     if isinstance(models, nn.Module):
         return {"this network": models}
     if isinstance(models, dict) and models and all(isinstance(m, nn.Module) for m in models.values()):
@@ -157,6 +162,11 @@ def _as_data(data):
 
 def _as_history(history):
     """The list of per-epoch rows that train() returns."""
+    if history is None:
+        raise Unreadable("There's no training run here yet: the line that trains the network didn't finish. "
+                         "Read the message it printed, fix it, and run the cell again.")
+    if isinstance(getattr(history, "history", None), list):  # the result of lab.run(...)
+        history = history.history
     if isinstance(history, tuple) and len(history) == 2 and isinstance(history[1], list):
         history = history[1]  # someone wrote history = train(...) and got (model, history)
     if isinstance(history, nn.Module):
@@ -264,9 +274,15 @@ def check_answers(answers, modulus=6):
 # ---------------------------------------------------------------- model and training
 
 
-def make_model(n_inputs, width, n_classes):
-    """One hidden layer: inputs -> width hidden units (ReLU) -> one score per class."""
-    return nn.Sequential(nn.Linear(n_inputs, width), nn.ReLU(), nn.Linear(width, n_classes))
+def make_model(n_inputs, width, n_classes, layers=1):
+    """inputs -> `layers` hidden layers of `width` units each (ReLU) -> one score per class.
+
+    Session 1's network has one hidden layer.
+    """
+    parts = [nn.Linear(n_inputs, width), nn.ReLU()]
+    for _ in range(layers - 1):
+        parts += [nn.Linear(width, width), nn.ReLU()]
+    return nn.Sequential(*parts, nn.Linear(width, n_classes))
 
 
 def divisors(modulus):
@@ -316,7 +332,7 @@ def evaluate(model, X, y, data, epoch=0):
 
 
 def train(encode, data, width=512, optimizer="sgd", lr=0.1, epochs=400, batch_size=64,
-          seed=0, weight_decay=0.0, save_at=(), live="plot", title=None, detail=False):
+          seed=0, weight_decay=0.0, save_at=(), live="plot", title=None, detail=False, layers=1):
     """Train a one-hidden-layer network. Returns (model, history, saved).
 
     history is a list with one row of measurements per epoch. saved maps each
@@ -329,7 +345,7 @@ def train(encode, data, width=512, optimizer="sgd", lr=0.1, epochs=400, batch_si
     """
     torch.manual_seed(seed)
     X, y = encode(data.numbers, data.n_digits), data.labels
-    model = make_model(X.shape[1], width, data.modulus)
+    model = make_model(X.shape[1], width, data.modulus, layers)
     model.encode = encode
     if optimizer == "sgd":
         opt = torch.optim.SGD(model.parameters(), lr=lr, weight_decay=weight_decay)
@@ -409,6 +425,9 @@ def result(history, guess=Ellipsis, modulus=6):
     last = _as_history(history)[-1]
     print(f"After {last['epoch']} epochs the network is right on {last['test_acc']:.0%} of the test numbers.")
     print(f"Guessing at random would be right {1 / modulus:.0%} of the time.")
+    reached = first_epoch(_as_history(history))
+    if reached is not None:
+        print(f"It was first right on 90% of the test numbers at epoch {reached}.")
     if _blank(guess):
         print("You did not type a prediction. Next time, commit to a number before you run!")
         return
@@ -447,6 +466,138 @@ def look_at(history, epochs):
         row = history[epoch]
         print(f"{epoch:5d}    {row['test_loss']:4.2f}    {math.exp(row['test_loss']):17.1f}"
               f"                 {row['test_acc']:9.0%}")
+
+# ---------------------------------------------------------------- what the loss is, and what loss curves look like
+
+
+def _read_beliefs(beliefs, modulus):
+    """Beliefs as a list of `modulus` fractions adding to 1. Percents, fractions and {answer: belief} all work."""
+    if isinstance(beliefs, dict):
+        values = [0.0] * modulus
+        for key, value in beliefs.items():
+            answer = _as_int(key, "an answer")
+            if not 0 <= answer < modulus:
+                raise Unreadable(f"The answers go from 0 to {modulus - 1}, so {answer} can't be one of them.")
+            values[answer] = _as_number(value, "a belief")
+    else:
+        items = _flatten(beliefs)
+        if any(_blank(v) for v in items):
+            raise Unreadable("Replace every ... with a belief (a percent, like 50) and run the cell again.")
+        if len(items) != modulus:
+            raise Unreadable(f"Type one belief for each of the {modulus} answers 0 to {modulus - 1}, "
+                             f"so {modulus} numbers in the list. You typed {len(items)}.")
+        values = [_as_number(v, "a belief") for v in items]
+    if any(v < 0 for v in values):
+        raise Unreadable("A belief can't be negative. Use 0 for an answer the network rules out.")
+    total = sum(values)
+    if total <= 0:
+        raise Unreadable("At least one belief has to be bigger than 0.")
+    if abs(total - 100) > 1.5 and abs(total - 1) > 0.015:
+        print(f"(Your beliefs add up to {total:g}, not 100. They have been scaled so that they do.)")
+    return [v / total for v in values]
+
+
+@_forgiving
+def loss_for(beliefs, answer, modulus=6):
+    """The loss on one number: minus the natural log of the belief in the right answer."""
+    p = _read_beliefs(beliefs, modulus)
+    answer = _as_int(answer, "the right answer")
+    if not 0 <= answer < modulus:
+        raise Unreadable(f"The right answer is a remainder, so a whole number from 0 to {modulus - 1}.")
+    print("answer:  " + "".join(f"{a:>6}" for a in range(modulus)))
+    print("belief:  " + "".join(f"{'·' if v < 0.005 else f'{v:.0%}':>6}" for v in p))
+    print(f"\nThe right answer is {answer}, and the network gives it {p[answer]:.0%}.")
+    if p[answer] == 0:
+        print("loss = -ln(0) = infinity. The network said the right answer was impossible.")
+        return
+    loss = abs(math.log(p[answer]))  # abs() so a perfect answer prints 0.00, not -0.00
+    print(f"loss = -ln({p[answer]:.2f}) = {loss:.2f}" + ("  (perfect)" if loss < 0.005 else ""))
+
+
+def first_epoch(history, level=0.9):
+    """The first epoch with test accuracy at or above level, or None."""
+    return next((row["epoch"] for row in history if row["test_acc"] >= level), None)
+
+
+def _made_up_runs():
+    """Four invented training runs, (training loss, test loss) for epochs 0 to 400."""
+    e = np.arange(401.0)
+    start = math.log(6)
+    wiggle = lambda seed: 0.01 * np.random.default_rng(seed).standard_normal(len(e))
+    sudden = start / (1 + np.exp((e - 90) / 6)) + 0.03
+    stuck = start - 0.015 * np.log1p(e) + wiggle(1)
+    memorize_train = start * np.exp(-e / 45) + 0.01
+    memorize_test = start - 0.25 * (1 - np.exp(-e / 10)) + 1.1 * (1 - np.exp(-np.maximum(e - 15, 0) / 120))
+    steady = start * np.exp(-e / 110) + 0.03
+    return {"A": (sudden - 0.02, sudden), "B": (stuck - 0.03, stuck + wiggle(2)),
+            "C": (memorize_train, memorize_test), "D": (steady - 0.02, steady)}
+
+
+def loss_curve_examples():
+    """Four made-up loss curves, A to D, each telling a different story."""
+    runs = _made_up_runs()
+    fig, axes = plt.subplots(2, 2, figsize=(9, 6), sharex=True, sharey=True)
+    e = np.arange(401)
+    for ax, (letter, (train_loss, test_loss)) in zip(axes.flat, runs.items()):
+        ax.plot(e, train_loss, color=BLUE, alpha=0.45, linestyle="--", label="training numbers")
+        ax.plot(e, test_loss, color=BLUE, label="test numbers")
+        ax.axhline(math.log(6), color=MUTED, linewidth=1, linestyle=":")
+        ax.set_title(f"Curve {letter}", loc="left")
+        ax.set_xscale("symlog", linthresh=1)
+        ax.set_xlim(0, 400)
+        ax.set_ylim(0, 3)
+        ax.set_yticks([0, 1, math.log(6), 3])
+        ax.set_yticklabels(["0", "1", "ln 6", "3"])
+        ax.set_xticks([0, 1, 3, 10, 30, 100, 300])
+        ax.set_xticklabels(["0", "1", "3", "10", "30", "100", "300"])
+    axes[0, 0].legend(loc="lower left", fontsize=9)
+    for ax in axes[1]:
+        ax.set_xlabel("epochs (stretched scale)")
+    for ax in axes[:, 0]:
+        ax.set_ylabel("loss")
+    fig.suptitle("Four made-up training runs", x=0.06, ha="left", fontweight="bold")
+    fig.tight_layout()
+    plt.show()
+
+
+CURVE_STORIES = {"never_learns": "B", "memorizes": "C", "learns_suddenly": "A", "learns_steadily": "D"}
+_CURVE_TIPS = {
+    "never_learns": "Look for a loss that stays near ln 6, where it started.",
+    "memorizes": "Look for a curve where the two lines split apart: the training loss falls but the test loss doesn't.",
+    "learns_suddenly": "Look for a long flat stretch followed by a cliff.",
+    "learns_steadily": "Look for a loss that slides down a little at a time.",
+}
+
+
+def _read_letter(value):
+    value = _unwrap(value)
+    if _blank(value):
+        return None
+    letters = re.sub(r"(?i)curve", "", str(value)).strip(" .,'\"").upper()
+    return letters if letters in ("A", "B", "C", "D") else str(value)
+
+
+@_forgiving
+def check_curves(never_learns, memorizes, learns_suddenly, learns_steadily):
+    """Score a student's matching of stories to the made-up curves A to D."""
+    typed = dict(never_learns=never_learns, memorizes=memorizes,
+                 learns_suddenly=learns_suddenly, learns_steadily=learns_steadily)
+    right = 0
+    for story, value in typed.items():
+        letter = _read_letter(value)
+        name = story.replace("_", " ")
+        if letter is None:
+            print(f"   {name:16s} not filled in yet: replace the ... with a letter in quotes, like \"A\"")
+        elif letter == CURVE_STORIES[story]:
+            right += 1
+            print(f"✓  {name:16s} curve {letter}")
+        elif letter in ("A", "B", "C", "D"):
+            print(f"✗  {name:16s} not curve {letter}. {_CURVE_TIPS[story]}")
+        else:
+            print(f"   {name:16s} could not read {letter!r}. Type one letter in quotes, like \"A\".")
+    if right == 4:
+        print("\nAll four right. Keep these pictures in mind when you sketch your own prediction later.")
+
 
 # ---------------------------------------------------------------- saving and loading
 
@@ -511,14 +662,18 @@ def plot_history(history, modulus=6, title=None, marks=(), factors=False, train_
                  label="training numbers")
     right = max(epochs[-1], 1)
     levels = sorted({modulus} | {modulus // d for d in divisors(modulus)})
+    highest = max(max(row["test_loss"], row["train_loss"] if train_curves else 0) for row in history)
     for k in levels:
         top.axhline(math.log(k), color=MUTED, linewidth=1, linestyle=":")
-    top.set_yticks([0] + [math.log(k) for k in levels])
-    top.set_yticklabels(["0"] + [f"ln {k} = {math.log(k):.2f}" for k in levels])
+    top.set_ylim(0, max(math.log(modulus) * 1.12, highest * 1.05))
+    labeled = []  # label a dotted line only if it has room; the top one (ln modulus) always gets a label
+    for k in reversed(levels):
+        if not labeled or math.log(labeled[-1]) - math.log(k) >= 0.065 * top.get_ylim()[1]:
+            labeled.append(k)
+    top.set_yticks([0] + [math.log(k) for k in labeled])
+    top.set_yticklabels(["0"] + [f"ln {k} = {math.log(k):.2f}" for k in labeled])
     top.grid(axis="y", visible=False)
     top.set_ylabel("loss")
-    highest = max(max(row["test_loss"], row["train_loss"] if train_curves else 0) for row in history)
-    top.set_ylim(0, max(math.log(modulus) * 1.12, highest * 1.05))
     top.set_title(title or f"Learning n mod {modulus}", loc="left")
 
     if factors:  # drawn first and wide, so the exact curve stays visible on top where they overlap
@@ -532,8 +687,12 @@ def plot_history(history, modulus=6, title=None, marks=(), factors=False, train_
     bottom.axhline(1 / modulus, color=MUTED, linewidth=1, linestyle=":")
     bottom.set_ylabel("accuracy on test numbers")
     bottom.set_ylim(-0.03, 1.03)
-    bottom.set_yticks([0, 1 / modulus, 0.5, 1])
-    bottom.set_yticklabels(["0%", f"guessing {1 / modulus:.0%}", "50%", "100%"])
+    if 1 / modulus >= 0.08:
+        bottom.set_yticks([0, 1 / modulus, 0.5, 1])
+        bottom.set_yticklabels(["0%", f"guessing {1 / modulus:.0%}", "50%", "100%"])
+    else:  # guessing sits too close to 0% for both labels
+        bottom.set_yticks([1 / modulus, 0.5, 1])
+        bottom.set_yticklabels([f"guessing {1 / modulus:.0%}", "50%", "100%"])
     bottom.set_xlabel("epochs of training (stretched scale)")
     if train_curves:
         top.legend(loc="center left", bbox_to_anchor=(1.01, 0.5), fontsize=9)
@@ -580,7 +739,8 @@ _live = {"handle": None, "last": 0.0, "image": None}
 
 def _frame(history, modulus, title, detail):
     """The training plot as PNG bytes, always the same pixel size for a given run."""
-    fig = plot_history(history, modulus, title, factors=detail, train_curves=detail)
+    # detail=True adds the right-mod-d curves and the training curves; detail="train" only the training curves
+    fig = plot_history(history, modulus, title, factors=detail is True, train_curves=bool(detail))
     size = (9.5, 6.4) if detail else (7.5, 6.4)  # room for the legend only when there is one
     fig.set_size_inches(*size)
     fig.subplots_adjust(left=0.19 if not detail else 0.15, right=0.71 if detail else 0.96,
@@ -737,6 +897,33 @@ def right_mod(models, data, d):
             pred = predict_all(model, data.numbers[data.test], data.n_digits)
             print(f"   {name:10s}  {(pred % d == truth % d).float().mean().item():5.0%}")
         print(f"   {'guessing':10s}  {guessing:5.0%}\n")
+
+
+@_forgiving
+@torch.no_grad()
+def mistakes(models, data, how_many=10):
+    """A sample of test numbers each network gets wrong: the number, the true answer, and its answer."""
+    data = _as_data(data)
+    models = _as_models(models)
+    how_many = _as_int(how_many, "how many mistakes to show")
+    if not 1 <= how_many <= 100:
+        raise Unreadable("Pick how many mistakes to show: a whole number from 1 to 100.")
+    numbers, truth = data.numbers[data.test], data.labels[data.test]
+    for name, model in models.items():
+        pred = predict_all(model, numbers, data.n_digits)
+        wrong = (pred != truth).nonzero().flatten()
+        if len(wrong) == 0:
+            print(f"{name}: right on every test number.\n".replace("this network:", "The network is"))
+            continue
+        generator = torch.Generator().manual_seed(0)  # the same sample every time
+        sample = wrong[torch.randperm(len(wrong), generator=generator)[:how_many]]
+        sample = sample[numbers[sample].argsort()]
+        label = "The network is" if name == "this network" else f"{name}:"
+        print(f"{label} wrong on {len(wrong):,} of {len(numbers):,} test numbers. Here are {len(sample)} of them.")
+        print("    number    true answer    network says")
+        for i in sample.tolist():
+            print(f"    {int(numbers[i]):04d}    {int(truth[i]):>11d}    {int(pred[i]):>12d}")
+        print()
 
 
 def confusion(model, data):
@@ -1022,6 +1209,15 @@ def _hint(etype, value, namespace):
         name = getattr(value, "name", None) or (re.findall(r"'(\w+)'", message) or [""])[0]
         known = [k for k in namespace if not k.startswith("_")] + dir(builtins)
         tips = []
+        if re.fullmatch(r"[A-Da-d]", name or ""):
+            return (f"Put the letter in quotation marks: <code>\"{html.escape(name.upper())}\"</code>, "
+                    f"not <code>{html.escape(name)}</code>. Without them, Python looks for something named "
+                    f"{html.escape(name)}.")
+        if re.match(r"(model|history)", name or "") and "train(" not in (namespace.get("_ih") or [""])[-1]:
+            return (f"<code>{html.escape(name)}</code> is made by an earlier training cell, which hasn't run yet "
+                    "or didn't finish. Scroll up to the training cell, run it and let it finish, then run this "
+                    "cell again. If it won't finish, <b>Show answer</b> under the training cell shows how to load "
+                    "the saved run instead.")
         if re.match(r"(model|history)", name or ""):
             return (f"<code>{html.escape(name)}</code> is made by a training line, and it does not exist yet. "
                     "Type the training line where the ✏️ comment says, spelling the names exactly as this line "

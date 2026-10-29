@@ -1,5 +1,7 @@
-"""Experiments for notebooks/03_explore.ipynb.
+"""Experiments for the notebooks.
 
+    lab.experiment(modulus=10)   session 1: one run, showing loss and accuracy only
+    lab.scoreboard()     every run so far, side by side
     lab.panel()          buttons for every experiment
     lab.menu()           list the experiments and the settings you can change
     lab.run("D")         run one experiment without buttons
@@ -32,13 +34,14 @@ ENCODINGS = {
 PLACES = {"nowhere": None, "thousands": 0, "hundreds": 1, "tens": 2, "ones": 3}
 LEARNING_RATE = {"SGD": 0.1, "Adam": 0.001}
 
-SESSION_1 = dict(encoding="one-hot digits", modulus=6, width=512, optimizer="SGD", weight_decay=0.0,
+SESSION_1 = dict(encoding="one-hot digits", modulus=6, width=512, layers=1, optimizer="SGD", weight_decay=0.0,
                  train_frac=0.5, hide_place="nowhere", hide_digit=7, epochs=400, seed=0)
 
 CHOICES = dict(
     encoding=list(ENCODINGS),
     modulus=list(range(2, 13)),
     width=[8, 16, 32, 64, 128, 256, 512, 1024],
+    layers=[1, 2, 3],
     optimizer=["SGD", "Adam"],
     weight_decay=[0.0, 0.1, 1.0, 3.0],
     train_frac=[0.1, 0.25, 0.5, 0.8],
@@ -95,12 +98,13 @@ def settings_for(preset=None, **changes):
 # Other names people reach for, and the setting they mean.
 ALIASES = {"mod": "modulus", "m": "modulus", "n_mod": "modulus", "nmod": "modulus",
            "hidden_units": "width", "units": "width", "hidden": "width", "size": "width",
+           "layer": "layers", "depth": "layers", "hidden_layers": "layers", "n_layers": "layers",
            "train": "train_frac", "frac": "train_frac", "fraction": "train_frac", "train_fraction": "train_frac",
            "epoch": "epochs", "wd": "weight_decay", "decay": "weight_decay",
            "place": "hide_place", "hide": "hide_place", "digit": "hide_digit", "hidden_digit": "hide_digit",
            "opt": "optimizer", "optimiser": "optimizer", "encode": "encoding", "encoder": "encoding"}
 # Whole-number settings and the range allowed, so nobody starts an hour-long run by accident.
-WHOLE = dict(modulus=(2, 100), width=(1, 4096), epochs=(1, 2000), hide_digit=(0, 9), seed=(0, 10 ** 9))
+WHOLE = dict(modulus=(2, 100), width=(1, 4096), layers=(1, 4), epochs=(1, 2000), hide_digit=(0, 9), seed=(0, 10 ** 9))
 
 
 def _preset_letter(preset):
@@ -109,8 +113,7 @@ def _preset_letter(preset):
         if letter in PRESETS:
             return letter
     if isinstance(preset, (int, float)) and not isinstance(preset, bool):
-        raise mlmath.Unreadable(f"Write the name of the setting too: lab.run(modulus={preset:g}), "
-                                f"not lab.run({preset:g}).")
+        raise mlmath.Unreadable(f"Write the name of the setting too: modulus={preset:g}, not just {preset:g}.")
     raise mlmath.Unreadable(f"There is no experiment {preset!r}. The letters are {', '.join(PRESETS)}. "
                             "lab.menu() lists them.")
 
@@ -178,21 +181,34 @@ def _clean(key, value):
     return value
 
 
+def _describe(settings):
+    """A run's settings in a few words: what differs from session 1."""
+    changed = [f"{key} {value}" for key, value in settings.items()
+               if value != SESSION_1[key] and key != "modulus"
+               and not (key == "hide_digit" and settings["hide_place"] == "nowhere")]
+    return f"n mod {settings['modulus']}" + (f", {', '.join(changed)}" if changed else "")
+
+
 def _title(settings):
     for letter, (name, _, _) in PRESETS.items():
         if settings == settings_for(letter):
             return f"{letter}. {name}: n mod {settings['modulus']}"
     if settings == SESSION_1:
         return "Session 1 settings: n mod 6"
-    return f"Your experiment: n mod {settings['modulus']}"
+    return f"Your experiment: {_describe(settings)}"
+
+
+_log = []  # every run so far, for scoreboard()
 
 
 @mlmath._forgiving
-def run(preset=None, live=True, **changes):
+def run(preset=None, live=True, detail=True, **changes):
     """Run one experiment. preset is a letter from menu(); changes override single settings.
 
     Returns the result (result.model, result.data, result.history, result.settings),
     or None after printing what to fix when a setting cannot be read.
+    detail=True draws the right-mod-d curves and training curves; detail="train" only the
+    training curves (see experiment()).
     """
     global last
     settings = settings_for(preset, **changes)
@@ -201,21 +217,48 @@ def run(preset=None, live=True, **changes):
     data = mlmath.make_data(modulus=settings["modulus"], train_frac=settings["train_frac"],
                             holdout=None if place is None else (place, settings["hide_digit"]))
     model, history, _ = mlmath.train(
-        ENCODINGS[settings["encoding"]], data, width=settings["width"],
+        ENCODINGS[settings["encoding"]], data, width=settings["width"], layers=settings["layers"],
         optimizer=settings["optimizer"].lower(), lr=LEARNING_RATE[settings["optimizer"]],
         weight_decay=settings["weight_decay"], epochs=settings["epochs"], seed=settings["seed"],
-        live="plot" if live else False, title=_title(settings), detail=True)
-    mlmath.summarize(history, factors=True)
+        live="plot" if live else False, detail=detail,
+        title=_title(settings) if preset is not None else f"Your experiment: {_describe(settings)}")
+    mlmath.summarize(history, factors=detail is True)
+    reached = mlmath.first_epoch(history)
+    print(f"First right on 90% of test numbers at epoch {reached}." if reached is not None else
+          f"Never right on 90% of test numbers in {settings['epochs']} epochs.")
     if place is not None:
         held, truth = data.numbers[data.held], data.labels[data.held]
         answers = mlmath.predict_all(model, held)
         print(f"\nOn the {len(held)} hidden numbers, the ones with a {settings['hide_digit']} "
               f"in the {settings['hide_place']} place:")
         print(f"  exactly right: {(answers == truth).float().mean():.0%}")
-        for d in mlmath.divisors(data.modulus):
-            print(f"  right mod {d}:   {(answers % d == truth % d).float().mean():.0%}")
+        if detail is True:
+            for d in mlmath.divisors(data.modulus):
+                print(f"  right mod {d}:   {(answers % d == truth % d).float().mean():.0%}")
     last = SimpleNamespace(model=model, data=data, history=history, settings=settings)
+    _log.append((_describe(settings), history[-1]["test_acc"], reached, settings["epochs"]))
     return last
+
+
+def experiment(preset=None, live=True, **changes):
+    """Run one experiment, drawing only the loss and exact accuracy (plus the training curves).
+
+    Session 1 uses this instead of run(), whose picture also shows the pieces that
+    session 2 uncovers.
+    """
+    return run(preset, live=live, detail="train", **changes)
+
+
+def scoreboard():
+    """Every experiment run so far in this notebook, side by side."""
+    if not _log:
+        print("No experiments yet. Run one first, like lab.experiment(modulus=10).")
+        return
+    width = max(len(entry[0]) for entry in _log) + 2
+    print(f"{'experiment':<{width}}   right on test numbers   first reached 90%")
+    for name, accuracy, reached, epochs in _log:
+        when = f"epoch {reached}" if reached is not None else f"not in {epochs} epochs"
+        print(f"{name:<{width}}   {accuracy:>21.1%}   {when:>17}")
 
 
 def menu():
@@ -244,7 +287,7 @@ def panel():
     style = {"description_width": "105px"}
     box = W.Layout(width="290px")
     labels = {"train_frac": [("10%", 0.1), ("25%", 0.25), ("50%", 0.5), ("80%", 0.8)]}
-    names = dict(encoding="Encoding", modulus="n mod", width="Hidden units", optimizer="Optimizer",
+    names = dict(encoding="Encoding", modulus="n mod", width="Hidden units", layers="Hidden layers", optimizer="Optimizer",
                  weight_decay="Weight decay", train_frac="Train on", hide_place="Hide a digit in",
                  hide_digit="Digit to hide", epochs="Epochs", seed="Seed")
     controls = {key: W.Dropdown(options=labels.get(key, CHOICES[key]), value=SESSION_1[key],
@@ -324,7 +367,7 @@ def panel():
     confusion_button.on_click(probe(lambda: mlmath.plot_confusions(this(), last.data)))
     swap_button.on_click(probe(lambda: mlmath.plot_swap_tables(this(), last.data, place.value)))
 
-    order = ["encoding", "modulus", "width", "optimizer", "weight_decay",
+    order = ["encoding", "modulus", "width", "layers", "optimizer", "weight_decay",
              "train_frac", "hide_place", "hide_digit", "epochs", "seed"]
     settings_grid = W.GridBox([controls[key] for key in order],
                               layout=W.Layout(grid_template_columns="repeat(2, 300px)"))

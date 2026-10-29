@@ -16,11 +16,11 @@ You need a laptop, a web browser, and a Google account. Nothing needs to be inst
 | --- | --- | --- |
 | Session 1: train the network | First 15 minutes (setup), then session 1 | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/icarm/SACNAS-2026/blob/main/notebooks/01_train.ipynb) |
 | Session 2: open the network up | After the break | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/icarm/SACNAS-2026/blob/main/notebooks/02_interpret.ipynb) |
-| Explore: beyond n mod 6 | After session 2, if there is time (it gives away the ending) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/icarm/SACNAS-2026/blob/main/notebooks/03_explore.ipynb) |
+| Explore: change anything | Only if there is time left after session 2 (it gives away the ending) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/icarm/SACNAS-2026/blob/main/notebooks/03_explore.ipynb) |
 
 Session 2 starts fresh from a saved copy of the network, so it does not matter how session 1 went.
 
-In cells marked ✏️ you type something before you run: a prediction, a missing line of code, a hypothesis to test. The comments in the cell say what to type, and a **Show answer** link under the cell has the answer.
+In cells marked ✏️ you type something before you run: a prediction, a missing line of code, a hypothesis to test. The comments in the cell say what to type, and a **Show answer** link under the cell has the answer. Questions marked 🗣️ are for talking over with the person next to you.
 
 ## If something goes wrong
 
@@ -43,7 +43,7 @@ In cells marked ✏️ you type something before you run: a prediction, a missin
 ```
 notebooks/      the three notebooks above
 mlmath.py       helper code: data, plots, the checks behind the ✏️ cells, and the probes from session 2
-lab.py          the experiments for the explore notebook
+lab.py          the ready-made experiments (other moduli, network sizes, hidden digits)
 checkpoints/    the network at epochs 30 and 400, plus its training history
 solutions/      discussion notes with answers and measured results (spoils the ending)
 tools/          scripts for the instructor
