@@ -20,7 +20,7 @@ Rough times for a room working at a normal pace. Each session is planned to fill
 | --- | --- | --- | --- |
 | 0–1. Setup, warm-up | 10 | Setup, break recap | 5 |
 | 2–3. Data, encodings | 8 | Part 1: ask, mistakes, right mod d | 17 |
-| 4. The loss | 12 | Part 2: thousands digit, groups, other digits | 22 |
+| 4. The loss | 7 | Part 2: thousands digit, groups, other digits | 22 |
 | 5. What a network is, the training loop | 16 | Part 3 and the reveal | 15 |
 | 6. Loss curves | 6 | Part 4: predictions | 16 |
 | 7–8. Experiments 1 and 2 | 12 | Part 5: the hidden digit | 8 |
@@ -34,7 +34,7 @@ Both columns add up to a little over 90 minutes on purpose. If session 1 runs be
 
 **Warm-up.** 1234 mod 6 = 4, 9000 mod 6 = 0, 5555 mod 6 = 5, 2026 mod 6 = 4. Most people use the last digit for parity and the digit sum for mod 3. Do not say so. The students write their method down, and session 2 hands it back at the end.
 
-**The loss (section 4).** The three typed beliefs give ln 6 = 1.79 (even spread), ln 3 = 1.10 (a third each on 1, 2 and 5) and ln 2 = 0.69 (50/50 between 2 and any other answer). The 99%-sure-and-wrong network scores 4.61, much worse than knowing nothing. A belief of 0 on the right answer gives an infinite loss, which the cell says. Beliefs that do not add up to 100 are rescaled, with a note. The point to land: e^loss is the number of answers still in play, which is how the flat stretch gets read later.
+**The loss (section 4).** Nothing to type here: every cell is filled in, so students run them and watch the bars and the loss. The examples give ln 6 = 1.79 (even spread), ln 3 = 1.10 (a third each on 1, 2 and 5) and ln 2 = 0.69 (50/50 between 0 and 2). The 99%-sure-and-wrong network scores 4.61, much worse than knowing nothing. A belief of 0 on the right answer gives an infinite loss, which the cell says. Beliefs that do not add up to 100 are rescaled, with a note. The point to land: e^loss is the number of answers still in play, which is how the flat stretch gets read later.
 
 **Loss curves (section 6).** The four made-up runs are A = learns suddenly, B = never learns, C = memorizes, D = learns steadily. Curve C is the one worth a minute: training loss to 0, test loss up past ln 6. Students meet the real thing in Experiment 4 (n mod 9).
 
