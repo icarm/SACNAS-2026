@@ -6,7 +6,7 @@ Answers and talking points for the questions in the notebooks, with results meas
 
 ## The arc
 
-The Chinese Remainder Theorem is the punchline, so nothing before the last section of session 2 names it. Session 1 never mentions parity or mod 3, and its training plots show only loss and exact accuracy (plus training curves). Instead it lets students notice that some remainders are learned in one epoch and others take hundreds, and that a small network gets stuck on the flat stretch. Session 2 finds parity (Part 1), then the classes mod 3 (Part 2), then has students write the recipe that combines them (Part 3), and only then names the theorem and redraws the session 1 plot with the hidden mod 2 and mod 3 curves. Part 4 uses the theorem to predict new runs, and Part 5 shows a 99% network that still misses the rule.
+The Chinese Remainder Theorem is the punchline, so nothing before the last section of session 2 names it. Session 1 never mentions parity or mod 3, and its training plots show only loss and exact accuracy (plus training curves). Instead it lets students notice that some remainders are learned in one epoch and others take hundreds, and that a small network gets stuck on the flat stretch. Session 2 finds parity (Part 1), then the classes mod 3 (Part 2), then has students write the recipe that combines them (Part 3), and only then names the theorem and redraws the session 1 plot with the hidden mod 2 and mod 3 curves. Part 4 uses the theorem to predict new runs, Part 5 shows a 99% network that still misses the rule, and Part 6 asks students what they would train on a math question of their own.
 
 Students type in every ✏️ cell. Each one has a **Show answer** fold under it, and the answers also live in the cell metadata so `tools/preflight.py` can run the notebooks filled in. 🗣️ marks a question for students to talk over with their neighbor; these are good moments to pause the room and take a few answers. The helpers read typed values loosely (`2`, `2.0`, `"2"`, `2,` and `"50%"` all work; `"Thousands"` and `"the tens place"` are read as places) and print a plain message instead of crashing when they cannot, including for an unfilled `...`. Any error that does happen, syntax errors included, gets a yellow "What this probably means" box under it: importing `mlmath` registers the handler with IPython. It recognizes the common slips: a missing comma or bracket, `50%`, `0007`, `mod` instead of `%`, curly quotes, wrong indentation, a misspelled name (with a suggestion), a letter typed without quotes, a stopped training run, and a training line not typed yet. `lab.run` and `lab.experiment` read their settings the same way and refuse runs out of range, such as 100,000 epochs.
 
@@ -19,16 +19,16 @@ Rough times for a room working at a normal pace. Each session is planned to fill
 | Session 1 | Minutes | Session 2 | Minutes |
 | --- | --- | --- | --- |
 | 0–1. Setup, warm-up | 10 | Setup, break recap | 5 |
-| 2–3. Data, encodings | 8 | Part 1: ask, mistakes, right mod d | 15 |
-| 4. The loss | 12 | Part 2: thousands digit, groups, other digits | 25 |
-| 5. Training loop | 10 | Part 3 and the reveal | 15 |
-| 6. Loss curves | 7 | Part 4: predictions | 20 |
-| 7–8. Experiments 1 and 2 | 10 | Part 5: the hidden digit | 10 |
-| 9–10. Experiment 3, read the plot | 13 | | |
-| 11. Other remainders | 12 | | |
+| 2–3. Data, encodings | 8 | Part 1: ask, mistakes, right mod d | 17 |
+| 4. The loss | 12 | Part 2: thousands digit, groups, other digits | 22 |
+| 5. What a network is, the training loop | 16 | Part 3 and the reveal | 15 |
+| 6. Loss curves | 6 | Part 4: predictions | 16 |
+| 7–8. Experiments 1 and 2 | 12 | Part 5: the hidden digit | 8 |
+| 9–10. Experiment 3, read the plot | 13 | Part 6: what would you train? | 15 |
+| 11. Other remainders | 10 | | |
 | 12. A different network | 8 | | |
 
-If a session runs behind, cut from the end: Experiment 5 in session 1, Part 5 in session 2. Each training run takes about 15 seconds on a laptop and up to a minute on Colab; width 2048 takes about four times as long.
+Both columns add up to a little over 90 minutes on purpose. If session 1 runs behind, cut Experiment 5. In session 2, protect Part 6, the closing discussion: if you're behind, skip "Your own" in Part 4 and then Part 5. Each training run takes about 15 seconds on a laptop and up to a minute on Colab; width 2048 takes about four times as long.
 
 ## Session 1 (01_train)
 
@@ -38,9 +38,15 @@ If a session runs behind, cut from the end: Experiment 5 in session 1, Part 5 in
 
 **Loss curves (section 6).** The four made-up runs are A = learns suddenly, B = never learns, C = memorizes, D = learns steadily. Curve C is the one worth a minute: training loss to 0, test loss up past ln 6. Students meet the real thing in Experiment 4 (n mod 9).
 
+**The tiny network (section 5).** Its strengths are set by hand, not trained. The five hidden units switch on at x = 0.3, 0.4, 0.6 and 0.7 (units 1 to 4) and off at x = 0.2 (unit 5, which only fires for small x), so those are the five places the curve can bend. At x = 0.2 every unit is off, at 0.5 units 1 and 2 are on (values 2.0 and 1.0, belief 99%), and at 0.9 units 1 to 4 are on (6, 5, 3, 2) and cancel out to a belief of 1%. The point to land: a hidden unit is a hinge, and the network's answer is built by adding hinges. That comes back right after Experiment 1.
+
+**Our network.** Before training, `mlmath.draw_network(4712)` shows beliefs between 15% and 18% on all six answers, so the loss is about ln 6 = 1.79. The picture draws 16 of the 512 hidden units. The `nn.Sequential` line in the training cell is the same picture written in code.
+
 **The loop.** The two missing lines are `loss.backward()` and `optimizer.step()`. `mlmath.check_loop(train)` runs one epoch and confirms the loss falls (1.79 to 1.58). Anyone hopelessly stuck can run `train = mlmath.backup_train`.
 
 **Experiment 1, raw number.** After 100 epochs: 17% on test numbers, which is guessing. Neighboring inputs 0.4711, 0.4712, 0.4713 have labels 1, 2, 3. A small network computes a function that changes slowly with its input, and this target changes with every step of 0.0001.
+
+The `compare_answers` picture under Experiment 1 makes this visible: for 4700 to 4729 the raw-value network answers 4 every time. With one input, each of the six scores is a hinged line with at most 512 bends, while following n mod 6 would need a peak at every sixth number, over 3,000 bends. Under Experiment 2, the digit-values network answers in blocks (2, 2, 2, 2, 2, 1, 1, 1, 1, 1, ...): it changes its answer only when the last digit moves a long way, which is the "nearby inputs, nearby outputs" habit in action.
 
 **If someone asks why we divide.** Measured with the session 1 settings: fed 4712 unscaled, the network starts at a loss of 855 instead of 1.79, and after one epoch it is stuck at exactly ln 6 for good. It scores like guessing, but because the huge inputs knocked it out, not because of the problem. Unscaled digits (0 to 9) do no harm: 18.5% on test numbers after 100 epochs, still guessing.
 
@@ -101,6 +107,8 @@ Small networks all make the first drop and stall on or just past the flat stretc
 
 ## Session 2 (02_interpret)
 
+**The pictures in Part 1.** `mlmath.draw_network(4712, models)` shows the two snapshots side by side: epoch 30 puts 23%, 46% and 30% on 0, 2 and 4, and epoch 400 puts 98% on 2. `compare_answers` for 4700 to 4729 shows epoch 30 answering 2, 1, 2, 1, ... down the whole row, right 10 times out of 30. The alternation is the parity, and it is the strongest hint before "right mod d".
+
 **Ask it.** At epoch 30 the network spreads its belief over three answers of the same parity as the truth and puts nothing on the other three: 4712 gets 23%, 46%, 30% on 0, 2, 4. It is often wrong (2025 and 3333 get answer 1), but never with the wrong parity.
 
 **Mistakes.** `mlmath.mistakes` lists 10 wrong test numbers at epoch 30 (it gets 3,405 of 5,000 wrong). Every wrong answer differs from the truth by 2 or 4, so it always has the right parity. That is the pattern to spot.
@@ -136,6 +144,8 @@ At epoch 30 nothing you do to the thousands digit matters, because the network i
 
 **4 = 2 × 2.** The line prints only two distinct pairs, (0, 0) and (1, 1), for four values of a, so n mod 2 twice cannot tell 0 from 2. That is why the theorem needs no common factor, and it sets up 9 = 3 × 3 in Part 4.
 
+**The recipe picture.** `mlmath.draw_recipe(4712)` works the recipe through for one number: last digit 2 gives n mod 2 = 0, digit sum 14 gives n mod 3 = 2, and the only answer from 0 to 5 with both is 2. Students can type their own numbers. `draw_pairs(6, 2, 3)` then shows the six boxes with one number each, and `draw_pairs(4, 2, 2)` shows two crowded boxes (0, 2 and 1, 3) and two empty ones. `draw_pairs(12, 4, 3)` in Part 4 is the same picture for 12.
+
 **The reveal.** Each of the six pairs (a mod 2, a mod 3) appears exactly once for a = 0, ..., 5. The Sunzi puzzle (threes leave 2, fives leave 3, sevens leave 2) has smallest answer 23. The closing plot is the session 1 run with the mod 2 and mod 3 curves added: parity hits 100% at epoch 1, mod 3 stays at guessing until about epoch 60 and then rises with the exact curve, which it equals from then on, since parity is already perfect.
 
 Worth saying if there is time: the network learned the easy factor first because parity depends on one digit, while the remainder mod 3 depends on all four digits together and no single digit says anything about it.
@@ -154,7 +164,16 @@ Worth saying if there is time: the network learned the easy factor first because
 
 n mod 30 is the showpiece: 30 answers, but once the last-digit pieces (2 and 5) are in, only 30 / 10 = 3 remain, so the flat stretch sits at ln 3 = 1.10, the same level as n mod 6. `look_at` prints e^loss of about 3.3 at epoch 30. n mod 12 shows three levels: ln 12, then ln 6 briefly after parity, then ln 3 after mod 4, then down. For 9, the theorem does not split it, yet a "right mod 3" curve still appears and comes first, because knowing n mod 9 includes knowing n mod 3. It is a step on the way, not a separate piece; worth a sentence if someone asks. The answer to "what decides how hard a piece is": how many digits it depends on. Pieces settled by the last digit or two (2, 4, 5, 8, 10, 20) are fast; 3, 7, 9 and 11 need every digit.
 
-**Part 5, the hidden digit.** See the next paragraph under Explore for the full story; the measured numbers are the same.
+**Part 5, the hidden digit.** See the next paragraph under Explore for the full story; the measured numbers are the same. The `draw_network` picture at the end of Part 5 marks the hidden switch with a dashed orange outline. For 4712 that switch is on, and the network puts most of its belief on 4, the wrong answer.
+
+**Part 6, what would you train?** This is the closing discussion, and the aim is to get students talking to each other and then to you. Give them about 5 minutes to fill in the box alone, 5 with a neighbor, then take a few pairs' questions in front of the room. Useful prompts while you circulate:
+
+- *Where do the examples come from?* If you can compute the answer, you can make as many as you want. If you can't, the network's training data is the bottleneck.
+- *Which encoding?* Session 1 is the warning: the same information in raw value, digit values and one-hot gave 17%, 17% and 99%. Ask what "one-hot" would mean for their inputs, such as polynomial coefficients or a graph's edges.
+- *What would you look for inside?* Every probe from today carries over: ask it about examples, read its mistakes, score it "right mod d" (or right on some simpler property), change one part of the input, hide part of the input.
+- *Prime or not?* A good one to discuss if it comes up. A network trained on n's digits can quickly rule out numbers ending in 0, 2, 4, 5, 6 or 8, since that only needs the last digit. Past that there's no digit shortcut for being prime, so expect it to stall (we haven't measured this one). A sum of two squares is a nice contrast: it is governed by primes that are 3 mod 4, which is structure a network might partly find.
+
+The real-world examples in the notebook text: Davies et al., "Advancing mathematics by guiding human intuition with AI" (Nature, 2021), found a new relationship between algebraic and geometric invariants of knots, and Wagner, "Constructions in combinatorics via neural networks" (2021), found counterexamples to several conjectures in graph theory.
 
 ## Explore (03_explore)
 

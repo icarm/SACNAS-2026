@@ -36,6 +36,7 @@ from matplotlib.colors import LinearSegmentedColormap
 
 BLUE, ORANGE, AQUA, YELLOW, MAGENTA = "#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"
 INK, MUTED, GRID = "#0b0b0b", "#898781", "#e1e0d9"
+EDGE, OFF, LIGHT_BLUE = "#5f5e58", "#f1f0eb", "#9ec5f4"
 SERIES = [BLUE, ORANGE, AQUA, YELLOW, MAGENTA]
 SEQUENTIAL = LinearSegmentedColormap.from_list("blues", ["#fcfcfb", "#9ec5f4", "#2a78d6", "#0d366b"])
 
@@ -237,6 +238,43 @@ def show_encodings(*numbers):
     print("3. One-hot digits (40 inputs):")
     for place, row in zip(["thousands", "hundreds", "tens", "ones"], encode_onehot(x)[0].reshape(4, 10)):
         print(f"   {place:9s}", [int(v) for v in row.tolist()])
+    _draw_encodings(n)
+
+
+def _draw_encodings(n):
+    """The three encodings of n as input units, shaded by the value each one holds."""
+    fig, ax = plt.subplots(figsize=(10.5, 4.4))
+    x = torch.tensor([n])
+    names = POSITION_NAMES[4]
+    r, row = 0.2, 0.5
+    shade = lambda v: SEQUENTIAL(0.05 + 0.75 * v) if v > 0 else "white"
+    edge = lambda v: EDGE if v > 0 else MUTED
+    heads = [(0.0, "1. Raw value\n1 input"), (2.2, "2. Digit values\n4 inputs"), (7.5, "3. One-hot digits\n40 inputs")]
+    for hx, text in heads:
+        ax.text(hx - 0.3, 1.25, text, ha="left", va="bottom", fontsize=11, fontweight="bold")
+    v = encode_raw(x)[0, 0].item()
+    _node(ax, 0.3, 0, r, fill=shade(v), edge=edge(v))
+    ax.text(0.3, -0.35, f"{v:g}", ha="center", va="top", fontsize=10)
+    for i, v in enumerate(encode_digits(x)[0].tolist()):
+        cx = 2.6 + i * 1.1
+        ax.text(cx, 0.35, names[i], ha="center", va="bottom", fontsize=8, color=MUTED)
+        _node(ax, cx, 0, r, fill=shade(v), edge=edge(v))
+        ax.text(cx, -0.35, f"{v:.1f}", ha="center", va="top", fontsize=10)
+    for i, column in enumerate(encode_onehot(x)[0].reshape(4, 10).tolist()):
+        cx = 8.0 + i * 1.1
+        ax.text(cx, 0.35, names[i], ha="center", va="bottom", fontsize=8, color=MUTED)
+        for d, v in enumerate(column):
+            _node(ax, cx, -d * row, r, fill=shade(v), edge=edge(v))
+            ax.text(cx - 0.3, -d * row, str(d), ha="right", va="center", fontsize=7,
+                    color=INK if v else MUTED, fontweight="bold" if v else "normal")
+    ax.text(-0.3, -4.9, f"What the network is shown for {n:04d}. Darker means a bigger input, and white means 0.",
+            ha="left", va="bottom", fontsize=9, color=MUTED)
+    ax.set_xlim(-0.4, 11.6)
+    ax.set_ylim(-5.0, 2.0)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    fig.tight_layout()
+    plt.show()
 
 
 WARM_UP = (1234, 9000, 5555, 2026)
@@ -504,14 +542,29 @@ def loss_for(beliefs, answer, modulus=6):
     answer = _as_int(answer, "the right answer")
     if not 0 <= answer < modulus:
         raise Unreadable(f"The right answer is a remainder, so a whole number from 0 to {modulus - 1}.")
-    print("answer:  " + "".join(f"{a:>6}" for a in range(modulus)))
-    print("belief:  " + "".join(f"{'·' if v < 0.005 else f'{v:.0%}':>6}" for v in p))
-    print(f"\nThe right answer is {answer}, and the network gives it {p[answer]:.0%}.")
     if p[answer] == 0:
-        print("loss = -ln(0) = infinity. The network said the right answer was impossible.")
-        return
-    loss = abs(math.log(p[answer]))  # abs() so a perfect answer prints 0.00, not -0.00
-    print(f"loss = -ln({p[answer]:.2f}) = {loss:.2f}" + ("  (perfect)" if loss < 0.005 else ""))
+        summary = "loss = -ln(0) = infinity. The network said the right answer was impossible."
+    else:
+        loss = abs(math.log(p[answer]))  # abs() so a perfect answer prints 0.00, not -0.00
+        summary = f"loss = -ln({p[answer]:.2f}) = {loss:.2f}" + ("  (perfect)" if loss < 0.005 else "")
+    fig, ax = plt.subplots(figsize=(6.5, 2.6))
+    ax.bar(range(modulus), p, color=[BLUE if a == answer else LIGHT_BLUE for a in range(modulus)], width=0.65)
+    for a, v in enumerate(p):
+        ax.text(a, v + 0.03, "·" if v < 0.005 else f"{v:.0%}", ha="center", va="bottom", fontsize=9,
+                fontweight="bold" if a == answer else "normal")
+    ax.set_xticks(range(modulus))
+    ax.set_xticklabels([f"{a}\n(right)" if a == answer else str(a) for a in range(modulus)])
+    ax.set_xlabel("answer")
+    ax.set_ylim(0, 1.18)
+    ax.set_yticks([0, 0.5, 1])
+    ax.set_yticklabels(["0%", "50%", "100%"])
+    ax.set_ylabel("belief")
+    ax.grid(axis="x", visible=False)
+    ax.set_title(summary.split(". ")[0].replace("-ln", "−ln"), loc="left")
+    fig.tight_layout()
+    plt.show()
+    print(f"The right answer is {answer}, and the network gives it {p[answer]:.0%}.")
+    print(summary)
 
 
 def first_epoch(history, level=0.9):
@@ -1151,6 +1204,434 @@ def check_recipe(recipe, model, data):
     print(f"Your recipe agrees with n mod {data.modulus} on {(answers == data.labels).sum().item():,} "
           f"of the {total:,} numbers.")
     print(f"It agrees with the trained network on {(answers == network).sum().item():,} of them.")
+
+# ---------------------------------------------------------------- pictures of networks
+
+
+
+def _node(ax, x, y, r, fill="white", edge=EDGE, lw=1.2, z=3, dashed=False):
+    ax.add_patch(plt.Circle((x, y), r, facecolor=fill, edgecolor=edge, linewidth=lw, zorder=z,
+                            linestyle=(0, (2, 1.5)) if dashed else "-"))
+
+
+def _dots(ax, x, y, gap=0.13):
+    """Three small dots in a column: this layer has more units than are drawn."""
+    ax.plot([x, x, x], [y - gap, y, y + gap], "o", color=MUTED, markersize=2.2, zorder=3)
+
+
+def _slots(size, shown):
+    """Which units of a layer to draw: all of them, or the first and last few with a gap (None) between."""
+    if size <= shown:
+        return list(range(size))
+    half = shown // 2
+    return list(range(half)) + [None] + list(range(size - half, size))
+
+
+def _spread(count, spacing):
+    """count heights, spacing apart, centered on 0, from the top down."""
+    return [(count - 1) / 2 * spacing - j * spacing for j in range(count)]
+
+
+# A tiny network with its connection strengths set by hand. Its job: is x between 0.35 and 0.65?
+TINY = {"w_in": np.array([10.0, 10, 10, 10, -10]), "b_in": np.array([-3.0, -4, -6, -7, 2]),
+        "w_out": np.array([10.0, -10, -10, 10, -2]), "b_out": -5.0}
+
+
+def _tiny(x):
+    """Hidden values, output score and belief in "yes" of the tiny network at input x."""
+    hidden = np.maximum(0, np.multiply.outer(np.asarray(x, dtype=float), TINY["w_in"]) + TINY["b_in"])
+    score = hidden @ TINY["w_out"] + TINY["b_out"]
+    return hidden, score, 1 / (1 + np.exp(-score))
+
+
+@_forgiving
+def draw_tiny_network(x=None):
+    """A network with 1 input, 5 hidden units and 1 output, and what it computes.
+
+    With x, every unit shows the value it holds when the input is x.
+    """
+    if x is not None:
+        x = _as_number(x, "a number from 0 to 1 (like 0.5)")
+        if not 0 <= x <= 1:
+            raise Unreadable(f"{x:g} is outside the picture. Pick a number from 0 to 1, like 0.5.")
+    fig, (left, right) = plt.subplots(1, 2, figsize=(11, 4.6), gridspec_kw={"width_ratios": [1.35, 1]})
+    left.set_aspect("equal")
+    left.axis("off")
+    hidden_y = _spread(5, 0.95)
+    r = 0.33
+    if x is not None:
+        hidden, score, belief = _tiny(x)
+    for i, y in enumerate(hidden_y):
+        for (x1, y1, x2, y2, w, faded) in [(0, 0, 2.6, y, TINY["w_in"][i], False),
+                                           (2.6, y, 5.2, 0, TINY["w_out"][i], x is not None and hidden[i] == 0)]:
+            left.plot([x1, x2], [y1, y2], color=BLUE if w > 0 else ORANGE, linewidth=0.8 + 2.2 * abs(w) / 10,
+                      alpha=0.12 if faded else 0.75, zorder=1, solid_capstyle="round")
+    if x is None:
+        _node(left, 0, 0, r)
+        for y in hidden_y:
+            _node(left, 2.6, y, r)
+        _node(left, 5.2, 0, r)
+    else:
+        _node(left, 0, 0, r, fill=LIGHT_BLUE)
+        left.text(0, 0, f"{x:.2f}", ha="center", va="center", fontsize=9, zorder=4)
+        for h, y in zip(hidden, hidden_y):
+            _node(left, 2.6, y, r, fill=LIGHT_BLUE if h > 0 else OFF, edge=EDGE if h > 0 else MUTED)
+            left.text(2.6, y, f"{h:.1f}", ha="center", va="center", fontsize=9, zorder=4,
+                      color=INK if h > 0 else MUTED)
+        _node(left, 5.2, 0, r, fill=SEQUENTIAL(0.15 + 0.7 * belief))
+        left.text(5.2, 0, f"{belief:.0%}", ha="center", va="center", fontsize=9, zorder=4,
+                  color="white" if belief > 0.6 else INK)
+    left.text(0, -0.6, "input\nx", ha="center", va="top", fontsize=10)
+    left.text(2.6, hidden_y[0] + 0.55, "5 hidden units", ha="center", va="bottom", fontsize=10)
+    left.text(5.2, -0.6, "output\nbelief in \"yes\"", ha="center", va="top", fontsize=10)
+    left.text(2.6, hidden_y[-1] - 0.7, "Each line is a connection strength (a number).\n"
+              "Blue: positive.  Orange: negative.  Thicker: bigger.",
+              ha="center", va="top", fontsize=9, color=MUTED)
+    left.set_xlim(-0.9, 6.3)
+    left.set_ylim(hidden_y[-1] - 1.6, hidden_y[0] + 0.9)
+    left.set_title("The network" + ("" if x is None else f", given x = {x:.2f}"), loc="left")
+
+    xs = np.linspace(0, 1, 401)
+    right.axvspan(0.35, 0.65, color=AQUA, alpha=0.12, linewidth=0)
+    right.text(0.5, 1.07, "the \"yes\" numbers", ha="center", va="bottom", fontsize=9, color=AQUA)
+    right.plot(xs, _tiny(xs)[2], color=BLUE)
+    right.axhline(0.5, color=MUTED, linewidth=1, linestyle=":")
+    if x is not None:
+        right.plot([x], [belief], "o", color=INK, markersize=7, zorder=5)
+        right.axvline(x, color=INK, linewidth=1, alpha=0.4)
+    right.set_xlim(0, 1)
+    right.set_ylim(-0.03, 1.2)
+    right.set_yticks([0, 0.5, 1])
+    right.set_yticklabels(["0%", "50%", "100%"])
+    right.set_xlabel("input x")
+    right.set_ylabel("belief in \"yes\"")
+    right.set_title("What it computes", loc="left")
+    fig.suptitle("A tiny network: is x between 0.35 and 0.65?", x=0.02, ha="left", fontweight="bold")
+    fig.tight_layout()
+    plt.show()
+
+
+def _input_layout(n_digits=4, spacing=0.32, group_gap=0.5):
+    """Heights of the one-hot switches, place by place, top to bottom: {(place, digit): y}."""
+    rows = []
+    y = 0.0
+    for place in range(n_digits):
+        for digit in range(10):
+            rows.append(((place, digit), y))
+            y -= spacing
+        y -= group_gap
+    middle = (rows[0][1] + rows[-1][1]) / 2
+    return {key: y - middle for key, y in rows}
+
+
+def _draw_one_network(ax, model, number, title, hide=None, shown=16):
+    """The one-hot network: 40 switches in, a sample of hidden units, 6 answers out with their beliefs."""
+    n_digits = 4
+    inputs = _input_layout(n_digits)
+    digits = digits_of(torch.tensor([number]), n_digits)[0].tolist()
+    lit = {(place, d) for place, d in enumerate(digits)}
+    first = model[0]
+    width = first.out_features
+    slots = _slots(width, shown)
+    hidden_y = _spread(len(slots), 0.72)
+    with torch.no_grad():
+        x = model.encode(torch.tensor([number]), n_digits)
+        activation = model[1](first(x))[0]
+        beliefs = torch.softmax(model(x), dim=1)[0].tolist()
+    modulus = len(beliefs)
+    gap = min(1.5, 13.0 / modulus)
+    out_y = _spread(modulus, gap)
+    r_out, bar = min(0.3, 0.42 * gap), min(0.26, 0.7 * gap)
+    xi, xh, xo = 0.0, 4.0, 8.0
+    drawn = [unit for unit in slots if unit is not None]
+    top = max(activation[drawn].max().item(), 1e-6)
+
+    for key, y in inputs.items():
+        is_hidden = hide is not None and key == hide
+        for unit, hy in zip(slots, hidden_y):
+            if unit is None:
+                continue
+            if is_hidden:
+                ax.plot([xi, xh], [y, hy], color=ORANGE, linewidth=0.7, alpha=0.55, linestyle=(0, (3, 2)), zorder=2)
+            elif key in lit:
+                ax.plot([xi, xh], [y, hy], color=BLUE, linewidth=0.8, alpha=0.4, zorder=2)
+            else:
+                ax.plot([xi, xh], [y, hy], color=MUTED, linewidth=0.4, alpha=0.07, zorder=1)
+    for unit, hy in zip(slots, hidden_y):
+        if unit is None:
+            continue
+        for oy in out_y:
+            ax.plot([xh, xo], [hy, oy], color=MUTED, linewidth=0.5, alpha=0.22, zorder=1)
+
+    names = POSITION_NAMES[n_digits]
+    for (place, d), y in inputs.items():
+        on = (place, d) in lit
+        if hide is not None and (place, d) == hide:
+            _node(ax, xi, y, 0.12, fill=YELLOW if on else "white", edge=ORANGE, lw=1.4, dashed=True)
+        else:
+            _node(ax, xi, y, 0.12, fill=BLUE if on else "white", edge=EDGE if on else MUTED, lw=1)
+        ax.text(xi - 0.25, y, str(d), ha="right", va="center", fontsize=6.5,
+                color=INK if on else MUTED, fontweight="bold" if on else "normal")
+        if d == 0:
+            ax.text(xi - 0.75, y - 4.5 * 0.32, f"{names[place]}\n{digits[place]}", ha="right", va="center",
+                    fontsize=9, color=INK)
+    for unit, hy in zip(slots, hidden_y):
+        if unit is None:
+            _dots(ax, xh, hy, gap=0.16)
+        else:
+            level = activation[unit].item() / top
+            _node(ax, xh, hy, 0.17, fill=SEQUENTIAL(0.05 + 0.6 * level) if level > 0 else OFF,
+                  edge=EDGE if level > 0 else MUTED)
+    best = int(np.argmax(beliefs))
+    for a, (p, oy) in enumerate(zip(beliefs, out_y)):
+        small = modulus > 12
+        _node(ax, xo, oy, r_out, fill=SEQUENTIAL(0.1 + 0.8 * p))
+        ax.text(xo, oy, str(a), ha="center", va="center", fontsize=6 if small else 10, zorder=4,
+                color="white" if p > 0.5 else INK, fontweight="bold")
+        ax.add_patch(plt.Rectangle((xo + 0.45, oy - bar / 2), 2.2 * p, bar, color=BLUE if a == best else LIGHT_BLUE,
+                                   zorder=3, linewidth=0))
+        note = "  (right answer)" if a == number % modulus else ""
+        if note or not small or p >= 0.01:
+            ax.text(xo + 0.55 + 2.2 * p, oy, f"{p:.0%}{note}", ha="left", va="center", fontsize=7 if small else 9,
+                    fontweight="bold" if note else "normal")
+    head = max(inputs.values()) + 0.6
+    ax.text(xi, head, f"{len(inputs)} switches in", ha="center", va="bottom", fontsize=10)
+    ax.text(xh, head, f"{width} hidden units", ha="center", va="bottom", fontsize=10)
+    ax.text(xo, head, f"{modulus} answers out", ha="center", va="bottom", fontsize=10)
+    ax.text(xo + 1.2, out_y[-1] - 0.9, "beliefs", ha="center", va="top", fontsize=9, color=MUTED)
+    ax.set_xlim(-3.2, 12.3)
+    ax.set_ylim(min(inputs.values()) - 0.8, head + 1.2)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    ax.set_title(title, loc="left")
+
+
+@_forgiving
+def draw_network(number=4712, models="before training", hide_place=None, hide_digit=None):
+    """Draw the one-hot network, shown one number: the switches that are on, and its belief in each answer.
+
+    models is a network, a dict {name: network}, or "before training" for a freshly made network.
+    Only 16 of the hidden units are drawn. A hidden unit's shade shows how strongly it fires.
+    hide_place and hide_digit mark one switch with a dashed outline: the one that was never on in training.
+    """
+    number = _as_int(number, "a whole number from 0 to 9999")
+    if not 0 <= number <= 9999:
+        raise Unreadable(f"{number} is out of range. Pick a whole number from 0 to 9999.")
+    if isinstance(models, str) and models == "before training":
+        torch.manual_seed(0)
+        untrained = make_model(40, 512, 6)
+        untrained.encode = encode_onehot
+        models = {"Before training": untrained}
+    models = _as_models(models)
+    if any(getattr(m, "encode", None) is not encode_onehot or not isinstance(m[0], nn.Linear)
+           or m[0].in_features != 40 for m in models.values()):
+        raise Unreadable("This picture only works for a network that reads one-hot digits.")
+    if any(len(m) != 3 for m in models.values()):
+        raise Unreadable("This picture only draws networks with one hidden layer.")
+    hide = None
+    if hide_place is not None:
+        hide = (_position(hide_place), _as_int(hide_digit, "the hidden digit"))
+    fig, axes = plt.subplots(1, len(models), figsize=(6.6 * len(models), 7.6), squeeze=False)
+    for ax, (name, model) in zip(axes[0], models.items()):
+        title = f"{name}, shown {number:04d}" if name != "this network" else f"Shown {number:04d}"
+        _draw_one_network(ax, model, number, title, hide=hide)
+    if hide is not None:
+        fig.text(0.02, 0.01, f"Dashed orange: the switch for a {hide[1]} in the {position_name(hide[0])} place, "
+                 "which was never on during training.", fontsize=9, color=ORANGE)
+    fig.tight_layout()
+    plt.show()
+
+
+def _draw_layers(ax, sizes, shown=(8, 22, 6), spacing=0.3, step=2.0):
+    """A plain network: one column of units per layer, every unit joined to every unit in the next layer."""
+    columns = []
+    for i, size in enumerate(sizes):
+        limit = shown[0] if i == 0 else shown[2] if i == len(sizes) - 1 else shown[1]
+        slots = _slots(size, limit)
+        columns.append([(i * step, y, s) for y, s in zip(_spread(len(slots), spacing), slots)])
+    for left, right in zip(columns, columns[1:]):
+        for x1, y1, s1 in left:
+            for x2, y2, s2 in right:
+                if s1 is not None and s2 is not None:
+                    ax.plot([x1, x2], [y1, y2], color=MUTED, linewidth=0.5, alpha=0.3, zorder=1)
+    for column in columns:
+        for x, y, s in column:
+            if s is None:
+                _dots(ax, x, y)
+            else:
+                _node(ax, x, y, 0.12, fill="white" if x in (0, step * (len(sizes) - 1)) else LIGHT_BLUE)
+    return columns
+
+
+@_forgiving
+def draw_network_shapes(shapes=None):
+    """Networks of different sizes and shapes, side by side. shapes is a dict {name: [40, ..., 6]}."""
+    if shapes is None:
+        shapes = {"one layer of 512\n(session 1)": [40, 512, 6], "one layer of 16": [40, 16, 6],
+                  "one layer of 2": [40, 2, 6], "two layers of 16": [40, 16, 16, 6]}
+    fig, axes = plt.subplots(1, len(shapes), figsize=(2.75 * len(shapes), 4.4))
+    for ax, (name, sizes) in zip(np.atleast_1d(axes), shapes.items()):
+        columns = _draw_layers(ax, sizes)
+        low = min(y for column in columns for _, y, _ in column)
+        for column, size in zip(columns, sizes):
+            ax.text(column[0][0], low - 0.35, str(size), ha="center", va="top", fontsize=9, color=MUTED)
+        ax.set_title(name, fontsize=11)
+        ax.set_xlim(-0.5, 6.5)
+        ax.set_ylim(-3.9, 3.4)
+        ax.set_aspect("equal")
+        ax.axis("off")
+    fig.text(0.01, 0.02, "Each column is a layer. The grey numbers count its units: 40 switches in, "
+             "6 answers out, hidden units in between. The dots mean more units than are drawn.",
+             fontsize=9, color=MUTED)
+    fig.tight_layout(rect=(0, 0.05, 1, 1))
+    plt.show()
+
+
+def draw_training_loop(batch=64, train_size=5000):
+    """The four steps of training, as a loop."""
+    fig, ax = plt.subplots(figsize=(8.5, 5.2))
+    ax.set_xlim(-5, 5)
+    ax.set_ylim(-3.1, 3.1)
+    ax.axis("off")
+    steps = [((0, 2.2), f"1. Show the network a batch\nof {batch} training numbers", False),
+             ((3.1, 0), "2. Measure the loss:\nthe average of −ln p", False),
+             ((0, -2.2), "3. Work out which way to nudge\neach connection strength\nloss.backward()", True),
+             ((-3.1, 0), "4. Nudge them\noptimizer.step()", True)]
+    for (x, y), text, typed in steps:
+        ax.text(x, y, text, ha="center", va="center", fontsize=10.5, zorder=3, linespacing=1.4,
+                bbox=dict(boxstyle="round,pad=0.6", facecolor="#fdf3d8" if typed else "white",
+                          edgecolor=YELLOW if typed else EDGE, linewidth=1.4))
+    arrows = [((1.9, 2.0), (3.0, 0.75)), ((3.0, -0.75), (2.0, -1.8)),
+              ((-2.0, -1.8), (-3.0, -0.6)), ((-3.0, 0.6), (-1.9, 2.0))]
+    for start, end in arrows:
+        ax.annotate("", xy=end, xytext=start, zorder=2,
+                    arrowprops=dict(arrowstyle="-|>", color=MUTED, linewidth=1.6, mutation_scale=16,
+                                    connectionstyle="arc3,rad=-0.25"))
+    batches = math.ceil(train_size / batch)
+    ax.text(0, 0, f"Go around {batches} times\n(all {train_size:,} training numbers)\n= one epoch",
+            ha="center", va="center", fontsize=10, color=MUTED, linespacing=1.4)
+    ax.text(5, -3.05, "Yellow: the two steps you type.", ha="right", va="bottom", fontsize=9, color=MUTED)
+    ax.set_title("The training loop", loc="left")
+    fig.tight_layout()
+    plt.show()
+
+
+@_forgiving
+@torch.no_grad()
+def compare_answers(models, start=4700, count=30):
+    """For the numbers start, start + 1, ...: the true answer next to what each network says."""
+    if isinstance(models, dict):
+        missing = [name for name, model in models.items() if model is None]
+        for name in missing:
+            print(f"{name}: there's no network yet (its training cell didn't finish), so it's left out.")
+        models = {name: model for name, model in models.items() if model is not None}
+        if not models:
+            return
+    models = _as_models(models)
+    start = _as_int(start, "the first number to show")
+    count = _as_int(count, "how many numbers to show")
+    if not 5 <= count <= 100:
+        raise Unreadable("Show between 5 and 100 numbers.")
+    if not 0 <= start <= 10000 - count:
+        raise Unreadable(f"Pick a first number from 0 to {10000 - count}.")
+    numbers = torch.arange(start, start + count)
+    fig, axes = plt.subplots(len(models), 1, figsize=(10, 2.5 * len(models) + 0.6), sharex=True, squeeze=False)
+    for ax, (name, model) in zip(axes[:, 0], models.items()):
+        modulus = model[-1].out_features
+        truth = (numbers % modulus).numpy()
+        said = predict_all(model, numbers).numpy()
+        ax.plot(numbers, truth, "o", markersize=11, markerfacecolor="none", markeredgecolor=MUTED,
+                markeredgewidth=1.5, label=f"true answer, n mod {modulus}")
+        ax.plot(numbers, said, "o", markersize=5.5, color=BLUE, label="the network says")
+        right = int((truth == said).sum())
+        label = "The network" if name == "this network" else name
+        ax.set_title(f"{label}: right on {right} of {count}", loc="left")
+        ax.set_ylim(-0.6, modulus - 0.4)
+        ax.set_yticks(range(modulus))
+        ax.set_ylabel("answer")
+        ax.grid(axis="x", visible=False)
+    axes[0, 0].legend(loc="lower left", bbox_to_anchor=(0, 1.15), ncol=2, fontsize=9)
+    axes[-1, 0].set_xlabel("n")
+    axes[-1, 0].xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+    fig.tight_layout()
+    plt.show()
+
+
+@_forgiving
+def draw_pairs(modulus=6, m=2, k=3):
+    """Put each number from 0 to modulus - 1 in the box for its pair (n mod m, n mod k)."""
+    modulus = _as_int(modulus, "the modulus")
+    m = _as_int(m, "the first factor")
+    k = _as_int(k, "the second factor")
+    if not (2 <= m <= 12 and 2 <= k <= 12 and 2 <= modulus <= 60):
+        raise Unreadable("Keep the numbers small: a modulus up to 60, and m and k from 2 to 12.")
+    boxes = {(i, j): [a for a in range(modulus) if a % m == i and a % k == j] for i in range(m) for j in range(k)}
+    fig, ax = plt.subplots(figsize=(max(1.35 * k + 2.4, 6.5), 0.9 * m + 1.7))
+    for (i, j), members in boxes.items():
+        fill = OFF if not members else "#d6e6fa" if len(members) == 1 else "#f9d3c2"
+        ax.add_patch(plt.Rectangle((j, -i - 1), 1, 1, facecolor=fill, edgecolor="white", linewidth=3))
+        ax.text(j + 0.5, -i - 0.5, ", ".join(map(str, members)) if members else "empty", ha="center",
+                va="center", fontsize=13 if members else 9, color=INK if members else MUTED,
+                fontweight="bold" if members else "normal")
+    for j in range(k):
+        ax.text(j + 0.5, 0.12, f"n mod {k} = {j}", ha="center", va="bottom", fontsize=9)
+    for i in range(m):
+        ax.text(-0.1, -i - 0.5, f"n mod {m} = {i}", ha="right", va="center", fontsize=9)
+    ax.set_xlim(-1.4, k + 0.05)
+    ax.set_ylim(-m - 0.05, 0.6)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    ax.set_title(f"The numbers 0 to {modulus - 1}, each in the box\nfor its remainders mod {m} and mod {k}",
+                 loc="left", fontsize=11)
+    fig.tight_layout()
+    plt.show()
+    crowded = sum(len(v) > 1 for v in boxes.values())
+    empty = sum(not v for v in boxes.values())
+    if crowded or empty:
+        print(f"{crowded} boxes hold more than one number and {empty} are empty.")
+    else:
+        print(f"Every box holds exactly one number: the pair pins down n mod {modulus}.")
+
+
+@_forgiving
+def draw_recipe(number=4712):
+    """The network's recipe for n mod 6, worked out for one number."""
+    n = _as_int(number, "a whole number from 0 to 9999")
+    if not 0 <= n <= 9999:
+        raise Unreadable(f"{n} is out of range. Pick a whole number from 0 to 9999.")
+    digits = [int(c) for c in f"{n:04d}"]
+    parity, r3 = digits[-1] % 2, sum(digits) % 3
+    answer = [a for a in range(6) if a % 2 == parity and a % 3 == r3][0]
+    fig, ax = plt.subplots(figsize=(11, 4.6))
+    ax.set_xlim(-0.6, 11.4)
+    ax.set_ylim(-2.6, 2.6)
+    ax.axis("off")
+    ys = _spread(4, 1.15)
+    box = dict(boxstyle="round,pad=0.45", facecolor="white", edgecolor=EDGE, linewidth=1.2)
+    for place, (d, y) in enumerate(zip(digits, ys)):
+        ax.text(0.9, y, f"{POSITION_NAMES[4][place]}: {d}", ha="center", va="center", fontsize=11, bbox=box, zorder=3)
+    sum_text = " + ".join(map(str, digits))
+    two = (4.9, 1.4)
+    three = (4.9, -1.2)
+    ax.text(*two, f"learned first\nlast digit mod 2\n{digits[-1]} mod 2 = {parity}", ha="center", va="center",
+            fontsize=10.5, linespacing=1.4, zorder=3, bbox={**box, "edgecolor": ORANGE, "linewidth": 2})
+    ax.text(*three, f"learned second\ndigit sum mod 3\n{sum_text} = {sum(digits)}\n{sum(digits)} mod 3 = {r3}",
+            ha="center", va="center", fontsize=10.5, linespacing=1.4, zorder=3,
+            bbox={**box, "edgecolor": AQUA, "linewidth": 2})
+    ax.text(9.4, 0.1, f"the one answer from 0 to 5\nwith n mod 2 = {parity}\nand n mod 3 = {r3}\n\n"
+            f"n mod 6 = {answer}", ha="center", va="center", fontsize=11, linespacing=1.4, zorder=3,
+            bbox={**box, "facecolor": "#d6e6fa", "edgecolor": BLUE, "linewidth": 2})
+    arrow = dict(arrowstyle="-|>", linewidth=1.5, mutation_scale=14, shrinkA=4, shrinkB=4)
+    ax.annotate("", xy=(3.95, two[1]), xytext=(1.75, ys[-1]), arrowprops={**arrow, "color": ORANGE})
+    for y in ys:
+        ax.annotate("", xy=(3.75, three[1]), xytext=(1.75, y), arrowprops={**arrow, "color": AQUA, "alpha": 0.8})
+    for start in (two, three):
+        ax.annotate("", xy=(7.85, 0.1), xytext=(6.05, start[1]), arrowprops={**arrow, "color": BLUE})
+    ax.set_title(f"The network's recipe, worked out for n = {n:04d}", loc="left")
+    fig.tight_layout()
+    plt.show()
+    print(f"Check: {n} mod 6 = {n % 6}.")
+
 
 # ---------------------------------------------------------------- hints under errors
 

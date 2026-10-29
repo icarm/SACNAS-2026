@@ -42,7 +42,7 @@ In cells marked ✏️ you type something before you run: a prediction, a missin
 
 ```
 notebooks/      the three notebooks above
-mlmath.py       helper code: data, plots, the checks behind the ✏️ cells, and the probes from session 2
+mlmath.py       helper code: data, plots, network pictures, the checks behind the ✏️ cells, and the probes from session 2
 lab.py          the ready-made experiments (other moduli, network sizes, hidden digits)
 checkpoints/    the network at epochs 30 and 400, plus its training history
 solutions/      discussion notes with answers and measured results (spoils the ending)
