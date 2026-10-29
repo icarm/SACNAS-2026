@@ -20,6 +20,8 @@ Session 2 does not depend on anything a student did in session 1. It loads the s
 
 **Experiment 1, raw number.** After 100 epochs: 17% on test numbers, which is guessing. Neighboring inputs 0.4711, 0.4712, 0.4713 have labels 1, 2, 3. A small network computes a function that changes slowly with its input, and this target changes with every step of 0.0001.
 
+**If someone asks why we divide.** Measured with the session 1 settings: fed 4712 unscaled, the network starts at a loss of 855 instead of 1.79, and after one epoch it is stuck at exactly ln 6 for good. It scores like guessing, but because the huge inputs knocked it out, not because of the problem. Unscaled digits (0 to 9) do no harm: 18.5% on test numbers after 100 epochs, still guessing.
+
 **Experiment 2, four digit values.** After 100 epochs: 17% on test numbers. Also stuck, even though everything is in the input. The encoding says 3 lies between 2 and 4, which is true for size and useless for remainders. (If someone asks: whether a digit is even flips ten times between 0 and 9.) Explore's button G gives this encoding Adam and 300 epochs: 22% on test numbers, 36% on training numbers. Training above test means it is memorizing.
 
 **Experiment 3, one-hot.** Measured on the test numbers, as printed by `mlmath.look_at`:
