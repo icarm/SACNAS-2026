@@ -202,8 +202,8 @@ def encode_raw(numbers, n_digits=4):
 
 
 def encode_digits(numbers, n_digits=4):
-    """One input per digit: the digit's value, scaled to lie between 0 and 1."""
-    return digits_of(numbers, n_digits).float() / 9
+    """One input per digit: the digit divided by 10, so 4712 becomes 0.4, 0.7, 0.1, 0.2."""
+    return digits_of(numbers, n_digits).float() / 10
 
 
 def encode_onehot(numbers, n_digits=4):

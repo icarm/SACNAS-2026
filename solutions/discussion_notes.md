@@ -20,7 +20,7 @@ Session 2 does not depend on anything a student did in session 1. It loads the s
 
 **Experiment 1, raw number.** After 100 epochs: 17% on test numbers, which is guessing. Neighboring inputs 0.4711, 0.4712, 0.4713 have labels 1, 2, 3. A small network computes a function that changes slowly with its input, and this target changes with every step of 0.0001.
 
-**Experiment 2, four digit values.** After 100 epochs: 17% on test numbers. Also stuck, even though everything is in the input. The encoding says 3 lies between 2 and 4, which is true for size and useless for remainders. (If someone asks: whether a digit is even flips ten times between 0 and 9.) Explore's button G gives this encoding Adam and 300 epochs: 21% on test numbers, 36% on training numbers. Training above test means it is memorizing.
+**Experiment 2, four digit values.** After 100 epochs: 17% on test numbers. Also stuck, even though everything is in the input. The encoding says 3 lies between 2 and 4, which is true for size and useless for remainders. (If someone asks: whether a digit is even flips ten times between 0 and 9.) Explore's button G gives this encoding Adam and 300 epochs: 22% on test numbers, 36% on training numbers. Training above test means it is memorizing.
 
 **Experiment 3, one-hot.** Measured on the test numbers, as printed by `mlmath.look_at`:
 
