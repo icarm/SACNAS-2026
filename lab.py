@@ -202,6 +202,20 @@ _log = []  # every run so far, for scoreboard()
 
 
 @mlmath._forgiving
+class Result(SimpleNamespace):
+    """What run() returns: .model, .data, .history and .settings.
+
+    It shows nothing when it is the last line of a cell, so the notebook doesn't
+    print the whole training history after the picture.
+    """
+
+    def __repr__(self):
+        return f"<experiment: {_describe(self.settings)}>"
+
+    def _ipython_display_(self):
+        pass
+
+
 def run(preset=None, live=True, detail=True, **changes):
     """Run one experiment. preset is a letter from menu(); changes override single settings.
 
@@ -235,7 +249,7 @@ def run(preset=None, live=True, detail=True, **changes):
         if detail is True:
             for d in mlmath.divisors(data.modulus):
                 print(f"  right mod {d}:   {(answers % d == truth % d).float().mean():.0%}")
-    last = SimpleNamespace(model=model, data=data, history=history, settings=settings)
+    last = Result(model=model, data=data, history=history, settings=settings)
     _log.append((_describe(settings), history[-1]["test_acc"], reached, settings["epochs"]))
     return last
 
